@@ -9,10 +9,10 @@ use stm32f4xx_hal::prelude::*;
 use stm32f4xx_hal::rcc::RccExt;
 
 pub struct Gpio {
-    gpioa: gpioa::Parts,
-    gpiob: gpiob::Parts,
-    gpioc: gpioc::Parts,
-    gpiog: gpiog::Parts,
+    pub gpioa: gpioa::Parts,
+    pub gpiob: gpiob::Parts,
+    pub gpioc: gpioc::Parts,
+    pub gpiog: gpiog::Parts,
 }
 
 pub fn setup_peripherals(p: Peripherals) -> (Clocks, Gpio, PartsIn) {
