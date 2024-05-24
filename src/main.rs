@@ -2,10 +2,13 @@
 #![no_main]
 #![no_std]
 
-use byteorder::{ByteOrder, NetworkEndian};
-use heapless::Vec;
 // Print panic message to probe console
 use panic_probe as _;
+
+use core::cell::RefCell;
+use cortex_m::interrupt::Mutex;
+use cortex_m_rt::{entry, exception};
+use heapless::Vec;
 use rmodbus::{
     server::{storage::ModbusStorage, ModbusFrame},
     ModbusProto,
@@ -17,23 +20,21 @@ use smoltcp::{
     time::Instant,
     wire::{EthernetAddress, Ipv4Address, Ipv4Cidr},
 };
-use stm32f4xx_hal::{interrupt, timer::SysTimerExt};
-
-use core::cell::RefCell;
-use cortex_m::interrupt::Mutex;
-use cortex_m_rt::{entry, exception};
 use stm32_eth::{
     dma::{RxRingEntry, TxRingEntry},
     stm32::{CorePeripherals, Peripherals, SYST},
     EthPins, Parts,
 };
+use stm32f4xx_hal::interrupt;
 
 mod mitutoyo;
 mod setup;
+use mitutoyo::Urica;
 
 const IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 168, 1, 200);
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const PORT: u16 = 502;
+const SET_ORIGIN_TIMEOUT: u64 = 10000;
 
 static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
@@ -51,6 +52,9 @@ fn main() -> ! {
         gpioa,
         gpiob,
         gpioc,
+        gpiod,
+        gpioe,
+        gpiof,
         gpiog,
     } = gpio;
 
@@ -63,8 +67,6 @@ fn main() -> ! {
         rx_d0: gpioc.pc4.into_floating_input(),
         rx_d1: gpioc.pc5.into_floating_input(),
     };
-
-    let led = gpioc.pc13.into_push_pull_output();
 
     let mut rx_ring: [RxRingEntry; 2] = Default::default();
     let mut tx_ring: [TxRingEntry; 2] = Default::default();
@@ -106,12 +108,42 @@ fn main() -> ! {
 
     let server_handle = sockets.add(server_socket);
 
+    let urica_1_data = gpiof.pf15.into_pull_up_input();
+    let urica_1_clock = gpioe.pe13.into_pull_up_input();
+    let urica_1_request = gpiof.pf14.into_push_pull_output();
+    let urica_1_origin = gpioe.pe11.into_push_pull_output();
+
+    let urica_2_data = gpioe.pe9.into_pull_up_input();
+    let urica_2_clock = gpiof.pf13.into_pull_up_input();
+    let urica_2_request = gpiof.pf12.into_push_pull_output();
+    let urica_2_origin = gpiod.pd15.into_push_pull_output();
+
+    let mut urica_1 = Urica::new(
+        urica_1_data,
+        urica_1_clock,
+        urica_1_request,
+        urica_1_origin,
+        0,
+        0,
+    );
+    let mut urica_2 = Urica::new(
+        urica_2_data,
+        urica_2_clock,
+        urica_2_request,
+        urica_2_origin,
+        1,
+        2,
+    );
+
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
+
+        urica_1.poll();
+        urica_2.poll();
 
         iface.poll(
             Instant::from_millis(time as i64),
@@ -129,13 +161,6 @@ fn main() -> ! {
                 defmt::info!("Listening at {}:{}...", IP_ADDRESS, PORT);
             }
         }
-
-        cortex_m::interrupt::free(|cs| {
-            let mut context = MODBUS_CONTEXT.borrow(cs).borrow_mut();
-            let time_bytes = time.to_be_bytes();
-            defmt::info!("Time is: {}", time_bytes);
-            context.inputs[0] = NetworkEndian::read_u16(&time_bytes[6..8]);
-        });
 
         if socket.is_open() {
             let mut data = [0; 256];

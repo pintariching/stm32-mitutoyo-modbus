@@ -3,7 +3,7 @@ use panic_probe as _;
 
 use stm32_eth::hal::rcc::Clocks;
 use stm32_eth::stm32::Peripherals;
-use stm32_eth::{EthPins, PartsIn};
+use stm32_eth::PartsIn;
 pub use stm32f4xx_hal::gpio::*;
 use stm32f4xx_hal::prelude::*;
 use stm32f4xx_hal::rcc::RccExt;
@@ -12,6 +12,9 @@ pub struct Gpio {
     pub gpioa: gpioa::Parts,
     pub gpiob: gpiob::Parts,
     pub gpioc: gpioc::Parts,
+    pub gpiod: gpiod::Parts,
+    pub gpioe: gpioe::Parts,
+    pub gpiof: gpiof::Parts,
     pub gpiog: gpiog::Parts,
 }
 
@@ -43,43 +46,11 @@ pub fn setup_peripherals(p: Peripherals) -> (Clocks, Gpio, PartsIn) {
         gpioa: p.GPIOA.split(),
         gpiob: p.GPIOB.split(),
         gpioc: p.GPIOC.split(),
+        gpiod: p.GPIOD.split(),
+        gpioe: p.GPIOE.split(),
+        gpiof: p.GPIOF.split(),
         gpiog: p.GPIOG.split(),
     };
 
     (clocks, gpio, ethernet)
-}
-
-pub fn setup_pins(
-    gpio: Gpio,
-) -> EthPins<PA1<Input>, PA7<Input>, PG11<Input>, PG13<Input>, PB13<Input>, PC4<Input>, PC5<Input>>
-{
-    let Gpio {
-        gpioa,
-        gpiob,
-        gpioc,
-        gpiog,
-    } = gpio;
-
-    let ref_clk = gpioa.pa1.into_floating_input();
-    let crs = gpioa.pa7.into_floating_input();
-    let tx_d1 = gpiob.pb13.into_floating_input();
-    let rx_d0 = gpioc.pc4.into_floating_input();
-    let rx_d1 = gpioc.pc5.into_floating_input();
-
-    let (tx_en, tx_d0) = {
-        (
-            gpiog.pg11.into_floating_input(),
-            gpiog.pg13.into_floating_input(),
-        )
-    };
-
-    EthPins {
-        ref_clk,
-        crs,
-        tx_en,
-        tx_d0,
-        tx_d1,
-        rx_d0,
-        rx_d1,
-    }
 }
