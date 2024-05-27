@@ -12,11 +12,11 @@ cortex-m-rt = "0.7"
 stm32f4xx-hal = { version = "0.20", features = ["stm32f439", "defmt"] }
 stm32-eth = { version = "0.6", features = ["stm32f439", "smoltcp-phy"] }
 panic-probe = { version = "0.3", features = ["defmt"] }
-smoltcp = { version = "0.11", default-features = false, features = [
-    "medium-ethernet",
-    "proto-ipv4",
-    "socket-tcp",
-    "defmt",
+smoltcp = { version = "0.11.0", default-features = false, features = [
+	"medium-ethernet",
+	"proto-ipv4",
+	"socket-tcp",
+	"defmt",
 ] }
 rmodbus = { version = "0.9", default-features = false, features = ["heapless"] }
 heapless = "0.8"

@@ -15,7 +15,7 @@ protocol = "Swd"
 enabled = true
 # Whether or not the target should be halted after reset.
 # DEPRECATED, moved to reset section
-halt_afterwards = false
+# halt_afterwards = false
 # Whether or not bytes erased but not rewritten with data from the ELF
 # should be restored with their contents before erasing.
 restore_unwritten_bytes = false
@@ -63,13 +63,13 @@ enabled = false
 #              String - Directly show output from the target 
 #              Defmt  - Format output on the host, see https://defmt.ferrous-systems.com/
 #              BinaryLE - Display as raw hex
-channels = [
+# channels = [
     # { up = 0, down = 0, name = "name", up_mode = "BlockIfFull", format = "Defmt" },
-]
+# ]
 # The duration in ms for which the logger should retry to attach to RTT.
 timeout = 3000
 # Whether timestamps in the RTTUI are enabled
-show_timestamps = true
+# show_timestamps = true
 # Whether to save rtt history buffer on exit.
 log_enabled = false
 # Where to save rtt history buffer relative to manifest path.

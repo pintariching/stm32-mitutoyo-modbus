@@ -31,7 +31,7 @@ mod mitutoyo;
 mod setup;
 use mitutoyo::Urica;
 
-const IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 168, 1, 200);
+const IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 168, 1, 203);
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const PORT: u16 = 502;
 const SET_ORIGIN_TIMEOUT: u64 = 10000;
@@ -41,7 +41,6 @@ static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 static MODBUS_CONTEXT: Mutex<RefCell<ModbusStorage<8, 8, 8, 8>>> =
     Mutex::new(RefCell::new(ModbusStorage::new()));
 
-#[allow(clippy::empty_loop)]
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
@@ -96,17 +95,36 @@ fn main() -> ! {
             .ok();
     });
 
-    let mut sockets = [SocketStorage::EMPTY];
+    iface
+        .routes_mut()
+        .add_default_ipv4_route(Ipv4Address::new(192, 168, 1, 1))
+        .unwrap();
+
+    // iface.inner.neighbor_cache.fill_with_expiration(
+    //     IpAddress::Ipv4(PLC_IP),
+    //     EthernetAddress::from_bytes(&PLC_MAC),
+    //     Instant::from_secs(1000000000),
+    // );
+
+    let mut sockets = [SocketStorage::EMPTY; 2];
     let mut sockets = SocketSet::new(&mut sockets[..]);
 
-    let mut server_rx_buffer = [0; 2048];
-    let mut server_tx_buffer = [0; 2048];
-    let server_socket: Socket = Socket::new(
-        SocketBuffer::new(&mut server_rx_buffer[..]),
-        SocketBuffer::new(&mut server_tx_buffer[..]),
+    let mut modbus_tcp_rx_buffer = [0; 1024];
+    let mut modbus_tcp_tx_buffer = [0; 1024];
+    let modbus_socket: Socket = Socket::new(
+        SocketBuffer::new(&mut modbus_tcp_rx_buffer[..]),
+        SocketBuffer::new(&mut modbus_tcp_tx_buffer[..]),
     );
 
-    let server_handle = sockets.add(server_socket);
+    let mut tcp_rx_buffer = [0; 1024];
+    let mut tcp_tx_buffer = [0; 1024];
+    let tcp_socket = Socket::new(
+        SocketBuffer::new(&mut tcp_rx_buffer[..]),
+        SocketBuffer::new(&mut tcp_tx_buffer[..]),
+    );
+
+    let _tcp_socket = sockets.add(tcp_socket);
+    let modbus_tcp_socket = sockets.add(modbus_socket);
 
     let urica_1_data = gpiof.pf15.into_pull_up_input();
     let urica_1_clock = gpioe.pe13.into_pull_up_input();
@@ -142,32 +160,32 @@ fn main() -> ! {
             *eth_pending = false;
         });
 
-        urica_1.poll();
-        urica_2.poll();
-
         iface.poll(
             Instant::from_millis(time as i64),
             &mut &mut dma,
             &mut sockets,
         );
 
-        let socket = sockets.get_mut::<Socket>(server_handle);
+        urica_1.poll();
+        urica_2.poll();
 
-        if !socket.is_listening() && !socket.is_open() {
-            socket.abort();
-            if let Err(e) = socket.listen(PORT) {
+        let modbus_socket = sockets.get_mut::<Socket>(modbus_tcp_socket);
+
+        if !modbus_socket.is_listening() && !modbus_socket.is_open() {
+            modbus_socket.abort();
+            if let Err(e) = modbus_socket.listen(PORT) {
                 defmt::error!("TCP listen error: {:?}", e)
             } else {
                 defmt::info!("Listening at {}:{}...", IP_ADDRESS, PORT);
             }
         }
 
-        if socket.is_open() {
+        if modbus_socket.is_open() {
             let mut data = [0; 256];
             let mut response: Vec<u8, 256> = Vec::new();
 
-            if socket.can_recv() {
-                let _recv_len = match socket.recv_slice(&mut data) {
+            if modbus_socket.can_recv() {
+                let _recv_len = match modbus_socket.recv_slice(&mut data) {
                     Ok(len) => len,
                     Err(e) => {
                         defmt::error!("{}", e);
@@ -183,6 +201,14 @@ fn main() -> ! {
             if frame.parse().is_err() {
                 defmt::error!("Failed to parse modbus frame")
             };
+
+            defmt::info!(
+                "Recieved frame with func: {}, count: {}, unit_id: {}, processing_required: {}",
+                frame.func,
+                frame.count,
+                frame.unit_id,
+                frame.processing_required
+            );
 
             if frame.processing_required {
                 let result = cortex_m::interrupt::free(|cs| {
@@ -206,7 +232,7 @@ fn main() -> ! {
 
                     let response = response.as_slice();
 
-                    if let Err(e) = socket.send_slice(response) {
+                    if let Err(e) = modbus_socket.send_slice(response) {
                         defmt::error!("{}", e);
                     }
                 }
